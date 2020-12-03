@@ -2,29 +2,46 @@ package com.amazonaws.lambda.demo;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+
+import java.io.ByteArrayInputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import com.amazonaws.AmazonServiceException;
+import com.amazonaws.regions.Regions;
 import com.amazonaws.services.s3.AmazonS3;
 import com.amazonaws.services.s3.AmazonS3ClientBuilder;
-import java.io.File;
+import com.amazonaws.services.s3.model.ObjectMetadata;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.amazonaws.services.s3.model.StorageClass;
+import com.amazonaws.services.lambda.runtime.events.SNSEvent;
 
 
-public class LambdaFunctionHandler implements RequestHandler<Object, String> {
+public class LambdaFunctionHandler implements RequestHandler<SNSEvent, String> {
 
     @Override
-    public String handleRequest(Object input, Context context) {
-        context.getLogger().log("Input: " + input);
-        try {
-        	String key_name = "teste";
-        	String bucket_name = "data-lake-teste-1";
-        	System.out.format("Uploading %s to S3 bucket %s...\n", input, bucket_name);
-        	final AmazonS3 s3 = AmazonS3ClientBuilder.standard().withRegion("sa-east-1").build();
-        	File file = new File("teste");
-        	s3.putObject(bucket_name, key_name, file);
-        } 
+    public String handleRequest(SNSEvent input, Context context) {
+    	try {
+    		String key_name = input.getRecords().get(0).getSNS().getSubject() + ".json";
+    		String bucket_name = "data-lake-teste-1";  		
+			String message = input.getRecords().get(0).getSNS().getMessage();			
+			
+			InputStream stream = new ByteArrayInputStream(message.getBytes(StandardCharsets.UTF_8));
+			ObjectMetadata metadata = new ObjectMetadata();
+			metadata.setContentType("application/json");
+			metadata.setContentDisposition("attachment; filename=\"" + key_name);			
+			
+			PutObjectRequest put = new PutObjectRequest(bucket_name, key_name, stream, metadata);
+			put.setStorageClass(StorageClass.ReducedRedundancy);
+	        put.setMetadata(metadata);
+	        
+	        AmazonS3 s3Client = AmazonS3ClientBuilder.standard().withRegion(Regions.SA_EAST_1).build();
+	        s3Client.putObject(put);
+        }
         catch (AmazonServiceException e) {
         	System.err.println(e.getErrorMessage());
         	System.exit(1);
     	}
 		return null;
-    }
+    }    
 }
